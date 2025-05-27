@@ -1,0 +1,54 @@
+const express = require('express');
+const User = require('../models/User');
+const router = express.Router();
+const auth = require('../middleware/auth');
+
+// Get current user profile
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-password');
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Update profile
+router.put('/me', auth, async (req, res) => {
+  try {
+    const { university, major, year, courses, studyPreferences, availability } = req.body;
+    
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { university, major, year, courses, studyPreferences, availability },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Find potential study buddies
+router.get('/matches', auth, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.id);
+    
+    // Find users with matching courses and availability
+    const matches = await User.find({
+      _id: { $ne: req.user.id }, // Not the current user
+      courses: { $in: currentUser.courses }, // Shared courses
+      availability: { $elemMatch: { 
+        day: { $in: currentUser.availability.map(a => a.day) },
+        timeSlots: { $in: currentUser.availability.flatMap(a => a.timeSlots) }
+      }}
+    }).select('-password');
+
+    res.json(matches);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+module.exports = router;
